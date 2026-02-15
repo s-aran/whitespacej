@@ -115,18 +115,6 @@ impl ParserWorking {
     }
 }
 
-fn dump(s: &String) -> String {
-    let char_map: HashMap<char, char> = HashMap::from([(' ', 'S'), ('\t', 'T'), ('\n', 'L')]);
-
-    let mut result = String::new();
-    for c in s.chars() {
-        let rc = char_map.get(&c).unwrap_or(&c);
-        result.push(*rc);
-    }
-
-    result
-}
-
 pub(crate) struct Parser {
     //
 }
@@ -192,12 +180,6 @@ impl Parser {
             working.c = c;
             working.space = c.into();
 
-            if let Some(s) = char_map.get(&c) {
-                println!("c={}, t={}, {:?}", s, dump(&working.token), working.state);
-            } else {
-                println!("unexpected char: {} (0x{:08X})", c, c as u32);
-            }
-
             if !allow_chars.contains(c) {
                 continue;
             }
@@ -210,13 +192,10 @@ impl Parser {
                         if let Some(imp) = instruction_map.get(working.token.as_str()) {
                             working.instruction = Some(*imp);
                             working.token.clear();
-                        } else {
-                            println!("!!");
                         }
+
                         continue;
                     }
-
-                    println!("imp = {:?}", working.instruction);
 
                     let token = working.token.as_str();
                     match working.instruction.unwrap() {

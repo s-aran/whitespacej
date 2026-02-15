@@ -17,6 +17,8 @@ pub(crate) trait Cell:
     + Hash
     + ShlAssign
     + BitOrAssign
+    + From<u8>
+    + From<u32>
 {
 }
 
@@ -32,7 +34,9 @@ impl<
         + WrappingSub
         + Hash
         + ShlAssign
-        + BitOrAssign,
+        + BitOrAssign
+        + From<u8>
+        + From<u32>,
 > Cell for T
 {
 }

@@ -6,13 +6,7 @@ pub(crate) enum DataType {
     Label,
 }
 
-#[derive(Clone)]
-pub(crate) enum Data<T: Cell> {
-    Number(T),
-    Label(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::Display)]
 pub(crate) enum Program<T: Cell> {
     Push(T),
     Duplicate,
