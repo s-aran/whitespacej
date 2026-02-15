@@ -138,7 +138,7 @@ impl Parser {
             ("\t ", Instruction::Arithmetic),
             ("\t\t", Instruction::HeapAccess),
             ("\n", Instruction::FlowControl),
-            ("\t\n", Instruction::FlowControl),
+            ("\t\n", Instruction::Io),
         ]);
 
         let stack_manipulation_map: HashMap<&'static str, StackManipulationImp> = HashMap::from([
