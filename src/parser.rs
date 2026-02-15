@@ -402,9 +402,6 @@ impl Parser {
                         },
                     }
                 }
-                _ => {
-                    panic!("STOP");
-                }
             }
         }
 
