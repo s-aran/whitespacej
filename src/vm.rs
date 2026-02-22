@@ -1,5 +1,7 @@
+use console::Term;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::io::Write;
 
 use crate::{cell::Cell, imp::Program};
 
@@ -66,16 +68,16 @@ impl<K: Cell, V: Cell> Heap<K, V> {
     }
 }
 
-#[derive(Debug, strum::Display)]
+#[derive(Debug, PartialEq, Eq, strum::Display)]
 enum RuntimeError<T: Cell> {
-    ConvertFailed(String),
-    SmallerStack(usize, usize),
-    LabelDoesNotFound(String),
-    KeyDoesNotFound(T),
-    Unknown,
+    InvalidNumberInput(String),
+    StackTooSmall(usize, usize),
+    LabelNotFound(String),
+    HeapKeyNotFound(T),
+    CallStackIsEmpty,
 }
 
-pub(crate) struct Machine<T: Cell> {
+pub struct Machine<T: Cell> {
     stack: Stack<T>,
     heap: Heap<T, T>,
     call_stack: Vec<usize>,
@@ -83,6 +85,8 @@ pub(crate) struct Machine<T: Cell> {
 
     pc: usize,
     program_list: Vec<Program<T>>,
+
+    term: Term,
 }
 
 impl<T: Cell> Machine<T> {
@@ -94,6 +98,7 @@ impl<T: Cell> Machine<T> {
             jump_table: HashMap::new(),
             pc: 0,
             program_list: program,
+            term: Term::stdout(),
         }
     }
 
@@ -147,7 +152,7 @@ impl<T: Cell> Machine<T> {
 
     fn duplicate(&mut self) -> Result<(), RuntimeError<T>> {
         if self.stack.stack().is_empty() {
-            return Err(RuntimeError::SmallerStack(self.stack.stack().len(), 1));
+            return Err(RuntimeError::StackTooSmall(self.stack.stack().len(), 1));
         }
 
         self.stack.push(*self.stack.last());
@@ -159,7 +164,7 @@ impl<T: Cell> Machine<T> {
             self.stack.push(*v);
             Ok(())
         } else {
-            Err(RuntimeError::SmallerStack(
+            Err(RuntimeError::StackTooSmall(
                 self.stack.stack().len(),
                 nth.to_usize().unwrap(),
             ))
@@ -168,7 +173,7 @@ impl<T: Cell> Machine<T> {
 
     fn swap(&mut self) -> Result<(), RuntimeError<T>> {
         if self.stack.stack().len() < 2 {
-            return Err(RuntimeError::SmallerStack(self.stack.stack().len(), 2));
+            return Err(RuntimeError::StackTooSmall(self.stack.stack().len(), 2));
         }
 
         self.stack.swap();
@@ -177,7 +182,7 @@ impl<T: Cell> Machine<T> {
 
     fn discard(&mut self) -> Result<(), RuntimeError<T>> {
         if self.stack.stack().is_empty() {
-            return Err(RuntimeError::SmallerStack(self.stack.stack().len(), 1));
+            return Err(RuntimeError::StackTooSmall(self.stack.stack().len(), 1));
         }
 
         self.stack.pop();
@@ -186,7 +191,7 @@ impl<T: Cell> Machine<T> {
 
     fn slide(&mut self, n: T) -> Result<(), RuntimeError<T>> {
         if self.stack.stack().len() <= n.to_usize().unwrap() {
-            return Err(RuntimeError::SmallerStack(
+            return Err(RuntimeError::StackTooSmall(
                 self.stack.stack().len(),
                 n.to_usize().unwrap(),
             ));
@@ -252,7 +257,7 @@ impl<T: Cell> Machine<T> {
     fn retrieve(&mut self) -> Result<(), RuntimeError<T>> {
         let key = self.stack.pop();
         if !self.heap.contains(&key) {
-            return Err(RuntimeError::KeyDoesNotFound(key));
+            return Err(RuntimeError::HeapKeyNotFound(key));
         }
         let value = self.heap.get(&key).clone();
 
@@ -262,8 +267,8 @@ impl<T: Cell> Machine<T> {
 
     fn call_subroutine(&mut self, label: String) -> Result<(), RuntimeError<T>> {
         if !self.jump_table.contains_key(&label) {
-            return Err(RuntimeError::LabelDoesNotFound(label));
-        }
+            return Err(RuntimeError::LabelNotFound(label));
+        };
 
         self.call_stack.push(self.pc);
         self.pc = *self.jump_table.get(&label).unwrap();
@@ -272,7 +277,7 @@ impl<T: Cell> Machine<T> {
 
     fn jump(&mut self, label: String) -> Result<(), RuntimeError<T>> {
         if !self.jump_table.contains_key(&label) {
-            return Err(RuntimeError::LabelDoesNotFound(label));
+            return Err(RuntimeError::LabelNotFound(label));
         }
 
         self.pc = *self.jump_table.get(&label).unwrap();
@@ -281,7 +286,7 @@ impl<T: Cell> Machine<T> {
 
     fn jump_if_zero(&mut self, label: String) -> Result<(), RuntimeError<T>> {
         if !self.jump_table.contains_key(&label) {
-            return Err(RuntimeError::LabelDoesNotFound(label));
+            return Err(RuntimeError::LabelNotFound(label));
         }
 
         let condition = self.stack.pop();
@@ -292,13 +297,13 @@ impl<T: Cell> Machine<T> {
         Ok(())
     }
 
-    fn jump_if_not_zero(&mut self, label: String) -> Result<(), RuntimeError<T>> {
+    fn jump_if_negative(&mut self, label: String) -> Result<(), RuntimeError<T>> {
         if !self.jump_table.contains_key(&label) {
-            return Err(RuntimeError::LabelDoesNotFound(label));
+            return Err(RuntimeError::LabelNotFound(label));
         }
 
         let condition = self.stack.pop();
-        if condition != T::zero() {
+        if condition < T::zero() {
             self.pc = *self.jump_table.get(&label).unwrap();
         }
 
@@ -307,7 +312,7 @@ impl<T: Cell> Machine<T> {
 
     fn end_subroutine(&mut self) -> Result<(), RuntimeError<T>> {
         if self.call_stack.is_empty() {
-            return Err(RuntimeError::Unknown);
+            return Err(RuntimeError::CallStackIsEmpty);
         }
 
         self.pc = self.call_stack.pop().unwrap();
@@ -320,11 +325,11 @@ impl<T: Cell> Machine<T> {
 
     fn output_char(&mut self) -> Result<(), RuntimeError<T>> {
         if self.stack.stack().is_empty() {
-            return Err(RuntimeError::SmallerStack(self.stack.stack().len(), 1));
+            return Err(RuntimeError::StackTooSmall(self.stack.stack().len(), 1));
         }
 
         let c = char::from_u32(self.stack.pop().to_u32().unwrap()).unwrap();
-        print!("{}", c);
+        let _ = self.term.write(&[c as u8]);
 
         Ok(())
     }
@@ -338,31 +343,41 @@ impl<T: Cell> Machine<T> {
 
     fn input_char(&mut self) -> Result<(), RuntimeError<T>> {
         if self.stack.stack().is_empty() {
-            return Err(RuntimeError::SmallerStack(self.stack.stack().len(), 1));
+            return Err(RuntimeError::StackTooSmall(self.stack.stack().len(), 1));
         }
 
-        let mut buffer = String::new();
-        std::io::stdin().read_line(&mut buffer).unwrap();
-
-        if buffer.len() <= 0 {
-            return Ok(());
-        }
-
-        let c = buffer.chars().next().unwrap() as u32;
         let key = self.stack.pop();
-        self.heap.set(key, c.into());
+
+        let stdin_char = self.term.read_char();
+        if let Ok(c) = stdin_char {
+            // echo
+            let _ = self.term.write(&[c as u8]);
+            self.heap.set(key, (c as u32).into());
+        }
 
         Ok(())
     }
 
     fn input_number(&mut self) -> Result<(), RuntimeError<T>> {
+        if self.stack.stack().is_empty() {
+            return Err(RuntimeError::StackTooSmall(self.stack.stack().len(), 1));
+        }
+
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer).unwrap();
 
-        match T::from_str_radix(buffer.as_str(), 10) {
-            Ok(v) => self.stack.push(v),
+        let key = self.stack.pop();
+
+        let s = buffer.trim();
+        if s.len() <= 0 {
+            self.heap.set(key, T::zero());
+            return Ok(());
+        }
+
+        match T::from_str_radix(s, 10) {
+            Ok(v) => self.heap.set(key, v),
             Err(_) => {
-                return Err(RuntimeError::ConvertFailed(buffer));
+                return Err(RuntimeError::InvalidNumberInput(buffer));
             }
         }
 
@@ -385,49 +400,63 @@ impl<T: Cell> Machine<T> {
         }
     }
 
+    fn exec(&mut self, program: &Program<T>) -> Result<(), RuntimeError<T>> {
+        match program {
+            Program::Push(value) => self.push(*value),
+            Program::Duplicate => self.duplicate(),
+            Program::Copy(nth) => self.copy(*nth),
+            Program::Swap => self.swap(),
+            Program::Discard => self.discard(),
+            Program::Slide(n) => self.slide(*n),
+            Program::Addition => self.add(),
+            Program::Subtraction => self.sub(),
+            Program::Multiplication => self.mul(),
+            Program::IntegerDivision => self.div(),
+            Program::Modulo => self.modulo(),
+            Program::Store => self.store(),
+            Program::Retrieve => self.retrieve(),
+            Program::Label(_) => Ok(()),
+            Program::Call(label) => self.call_subroutine(label.clone()),
+            Program::Jump(label) => self.jump(label.clone()),
+            Program::JumpIfZero(label) => self.jump_if_zero(label.clone()),
+            Program::JumpIfNegative(label) => self.jump_if_negative(label.clone()),
+            Program::Return => self.end_subroutine(),
+            Program::End => self.halt(),
+            Program::OutputChar => self.output_char(),
+            Program::OutputInt => self.output_number(),
+            Program::InputChar => self.input_char(),
+            Program::InputInt => self.input_number(),
+        }
+    }
+
+    fn next(&mut self) -> Result<(), ()> {
+        self.pc += 1;
+        if self.pc >= self.program_list.len() {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn execute(&mut self) -> ! {
         self.register_label();
 
         loop {
-            let p = self.fetch();
-            let result = match p {
-                Program::Push(value) => self.push(*value),
-                Program::Duplicate => self.duplicate(),
-                Program::Copy(nth) => self.copy(*nth),
-                Program::Swap => self.swap(),
-                Program::Discard => self.discard(),
-                Program::Slide(n) => self.slide(*n),
-                Program::Addition => self.add(),
-                Program::Subtraction => self.sub(),
-                Program::Multiplication => self.mul(),
-                Program::IntegerDivision => self.div(),
-                Program::Modulo => self.modulo(),
-                Program::Store => self.store(),
-                Program::Retrieve => self.retrieve(),
-                Program::Label(_) => Ok(()),
-                Program::Call(label) => self.call_subroutine(label.clone()),
-                Program::Jump(label) => self.jump(label.clone()),
-                Program::JumpIfZero(label) => self.jump_if_zero(label.clone()),
-                Program::JumpIfNotZero(label) => self.jump_if_not_zero(label.clone()),
-                Program::Return => self.end_subroutine(),
-                Program::End => self.halt(),
-                Program::OutputChar => self.output_char(),
-                Program::OutputInt => self.output_number(),
-                Program::InputChar => self.input_char(),
-                Program::InputInt => self.input_number(),
-            };
-
+            let p = self.fetch().clone();
+            let result = self.exec(&p);
             if let Err(e) = result {
                 eprintln!("Runtime Error occurred: {}", e);
                 self.dump();
                 self.halt();
             }
 
-            self.pc += 1;
-            if self.pc >= self.program_list.len() {
-                println!("");
+            if let Err(_) = self.next() {
                 self.halt();
             }
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/test_vm.rs"]
+mod tests;

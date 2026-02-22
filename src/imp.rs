@@ -7,7 +7,7 @@ pub(crate) enum DataType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, strum::Display)]
-pub(crate) enum Program<T: Cell> {
+pub enum Program<T: Cell> {
     Push(T),
     Duplicate,
     Copy(T),
@@ -25,7 +25,7 @@ pub(crate) enum Program<T: Cell> {
     Call(String),
     Jump(String),
     JumpIfZero(String),
-    JumpIfNotZero(String),
+    JumpIfNegative(String),
     Return,
     End,
     OutputChar,

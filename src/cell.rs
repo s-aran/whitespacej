@@ -4,7 +4,7 @@ use std::{
 };
 
 use num_traits::{PrimInt, Signed, WrappingAdd, WrappingSub};
-pub(crate) trait Cell:
+pub trait Cell:
     PrimInt
     + Signed
     + Copy

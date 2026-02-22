@@ -64,7 +64,7 @@ enum FlowControlImp {
     Call,
     Jump,
     JumpIfZero,
-    JumpIfNotZero,
+    JumpIfNegative,
     Return,
     End,
 }
@@ -115,12 +115,12 @@ impl ParserWorking {
     }
 }
 
-pub(crate) struct Parser {
+pub struct Parser {
     //
 }
 
 impl Parser {
-    pub fn parse<T: Cell>(source: impl Into<String>) -> Vec<Program<T>> {
+    pub fn parse<T: Cell>(source: impl Into<String>) -> Result<Vec<Program<T>>, ()> {
         let instruction_map: HashMap<&'static str, Instruction> = HashMap::from([
             (" ", Instruction::StackManipulation),
             ("\t ", Instruction::Arithmetic),
@@ -154,7 +154,7 @@ impl Parser {
             (" \t", FlowControlImp::Call),
             (" \n", FlowControlImp::Jump),
             ("\t ", FlowControlImp::JumpIfZero),
-            ("\t\t", FlowControlImp::JumpIfNotZero),
+            ("\t\t", FlowControlImp::JumpIfNegative),
             ("\t\n", FlowControlImp::Return),
             ("\n\n", FlowControlImp::End),
         ]);
@@ -259,7 +259,7 @@ impl Parser {
                                     | FlowControlImp::Call
                                     | FlowControlImp::Jump
                                     | FlowControlImp::JumpIfZero
-                                    | FlowControlImp::JumpIfNotZero => {
+                                    | FlowControlImp::JumpIfNegative => {
                                         working_stack.push(working.clone());
                                         working = ParserWorking::default();
                                         working.instruction = Some(Instruction::FlowControl);
@@ -365,8 +365,8 @@ impl Parser {
                                     FlowControlImp::JumpIfZero => {
                                         result.push(Program::JumpIfZero(cloned_token));
                                     }
-                                    FlowControlImp::JumpIfNotZero => {
-                                        result.push(Program::JumpIfNotZero(cloned_token));
+                                    FlowControlImp::JumpIfNegative => {
+                                        result.push(Program::JumpIfNegative(cloned_token));
                                     }
                                     _ => {
                                         panic!();
@@ -384,6 +384,6 @@ impl Parser {
             }
         }
 
-        result
+        Ok(result)
     }
 }

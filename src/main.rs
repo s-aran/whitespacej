@@ -15,7 +15,7 @@ fn main() {
     let args = <Args as clap::Parser>::parse();
     let source = std::fs::read_to_string(args.file).unwrap();
 
-    let program = Parser::parse::<i64>(source);
+    let program = Parser::parse::<i64>(source).unwrap();
 
     let mut vm = Machine::new(program);
     vm.execute();
